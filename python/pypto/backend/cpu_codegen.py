@@ -134,7 +134,12 @@ class CCodegen:
         "tile.store": "_cg_tile_store_assign",
         "tile.matmul": "_cg_matmul_assign",
         "tile.matmul_acc": "_cg_matmul_acc_assign",
-        "tile.gemv": "_cg_gemv_assign",
+        "tile.gemv": "_cg_structured_op_assign",
+        "tile.reshape": "_cg_structured_op_assign",
+        "tile.transpose": "_cg_structured_op_assign",
+        "tile.cast": "_cg_structured_op_assign",
+        "tile.sum": "_cg_structured_op_assign",
+        "tile.max": "_cg_structured_op_assign",
     }
 
     def __init__(self, vec_type: str = "FP32Vec1", tile_type: str = "ScalarTile") -> None:
@@ -304,6 +309,7 @@ class CCodegen:
         while i < len(stmts):
             s = stmts[i]
             if isinstance(s, InCoreScopeStmt):
+                # Collect consecutive InCoreScopeStmts
                 incore_stmts = [s]
                 j = i + 1
                 while j < len(stmts) and isinstance(stmts[j], InCoreScopeStmt):
@@ -323,6 +329,7 @@ class CCodegen:
                     self._indent -= 1
                     self._emit("}")
                 else:
+                    # Single InCoreScopeStmt — still use omp parallel
                     self._emit("#pragma omp parallel")
                     self._emit("{")
                     self._indent += 1
@@ -521,10 +528,15 @@ class CCodegen:
             ctype = _c_type_for(var)
             self._emit(f"{ctype} {c_name} = {result};")
 
-    # ── tile.gemv (structured op, inlined dispatch) ─────────────────────
+    # ── structured tile op dispatch ──────────────────────────────────────
 
-    def _cg_gemv_assign(self, var: Var, call: Call) -> None:
-        result_name, shapes = self._cg_tile_gemv(call)
+    def _cg_structured_op_assign(self, var: Var, call: Call) -> None:
+        """Route non-elementwise tile ops (gemv, transpose, cast, reduce) to
+        their dedicated handlers."""
+        op_name = call.op.name
+        handler_name = "_cg_" + _op_to_method(op_name)
+        handler = getattr(self, handler_name)
+        result_name, shapes = handler(call)
         self._register_var(var, result_name)
         key = self._var_key(var)
         self._var_shapes[key] = shapes
@@ -665,10 +677,25 @@ class CCodegen:
 
     def _cg_tensor_op_assign(self, var: Var, call: Call) -> None:
         op_name = call.op.name
+        args = call.args
         c_name = self._tmp("tensor")
         self._register_var(var, c_name)
-        self._emit(f"/* tensor op {op_name}: deferred to PR 2 */")
-        self._var_shapes[self._var_key(var)] = _get_shape(call)
+        ctype = self._tile_element_type(call)
+        shape = _get_shape(call)
+
+        if op_name == "tensor.create":
+            total = " * ".join(str(d) for d in shape) if shape else "1"
+            self._emit(f"{ctype}* {c_name} = ({ctype}*)calloc(({total}), sizeof({ctype}));")
+        elif op_name == "tensor.full":
+            total = " * ".join(str(d) for d in shape) if shape else "1"
+            value = self._gen_expr(args[1]) if len(args) >= 2 else "0.0f"
+            self._emit(f"{ctype}* {c_name} = ({ctype}*)malloc(({total}) * sizeof({ctype}));")
+            self._emit(f"for (int64_t _i = 0; _i < ({total}); _i++) {c_name}[_i] = {value};")
+        else:
+            self._emit(f"/* tensor op {op_name} */")
+
+        self._var_types[self._var_key(var)] = f"{ctype}*"
+        self._var_shapes[self._var_key(var)] = shape
 
     # ── tile.load / tile.store (assign variants) ───────────────────────
 
@@ -758,6 +785,107 @@ class CCodegen:
         self._emit("}")
         return result_name, [1, N]
 
+    def _cg_tile_reshape(self, call: Call) -> tuple[str, list]:
+        src_key = self._var_key(call.args[0])
+        new_shape = _resolve_shape_from_args(call, idx=1)
+        if new_shape and len(new_shape) == 2:
+            src_name = self._var_name(call.args[0])
+            result_name = self._tmp("tile")
+            M, N = new_shape[0], new_shape[1]
+            self._emit(f"{self._tile}<{M}, {N}> {result_name};")
+            self._emit(f"memcpy(&{result_name}.data[0][0], &{src_name}.data[0][0], "
+                       f"{M} * {N} * sizeof(float));")
+            return result_name, new_shape
+        return self._var_name(call.args[0]), self._var_shapes.get(src_key, [1, 1])
+
+    def _cg_tile_transpose(self, call: Call) -> tuple[str, list]:
+        args = call.args
+        tile_name = self._var_name(args[0])
+        tile_shape = self._var_shapes.get(self._var_key(args[0]), [1, 1])
+        result_name = self._tmp("tile")
+        result_shape = tile_shape
+
+        if len(tile_shape) == 2:
+            M, N = tile_shape[0], tile_shape[1]
+            result_shape = [N, M]
+            self._emit(f"{self._tile}<{N}, {M}> {result_name};")
+            self._emit(f"for (int64_t _i = 0; _i < {M}; _i++)")
+            self._emit(f"    for (int64_t _j = 0; _j < {N}; _j++)")
+            self._emit(f"        {result_name}.data[_j][_i] = {tile_name}.data[_i][_j];")
+
+        return result_name, result_shape
+
+    def _cg_tile_cast(self, call: Call) -> tuple[str, list]:
+        args = call.args
+        tile_name = self._var_name(args[0])
+        result_name = self._tmp("tile")
+        ctype = self._tile_element_type(call)
+        shape = _get_shape(args[0]) if _is_shaped(args[0]) else [1, 1]
+
+        if len(shape) == 2:
+            M, N = shape[0], shape[1]
+            self._emit(f"{self._tile}<{M}, {N}> {result_name};")
+            self._emit(f"for (int64_t _i = 0; _i < {M}; _i++)")
+            self._emit(f"    for (int64_t _j = 0; _j < {N}; _j++)")
+            self._emit(f"        {result_name}.data[_i][_j] = ({ctype})({tile_name}.data[_i][_j]);")
+
+        return result_name, shape
+
+    def _cg_tile_sum(self, call: Call) -> tuple[str, list]:
+        return self._cg_tile_reduce(call, "+=", "0.0f")
+
+    def _cg_tile_max(self, call: Call) -> tuple[str, list]:
+        args = call.args
+        tile_name = self._var_name(args[0])
+        axis = _extract_axis(call)
+        shape = _get_shape(args[0])
+        result_name = self._tmp("tile")
+        ctype = self._tile_element_type(call)
+        result_shape: list = shape
+
+        if axis == 1 and len(shape) == 2:
+            M, N = shape[0], shape[1]
+            result_shape = [M, 1]
+            self._emit(f"{self._tile}<{M}, 1> {result_name};")
+            self._emit(f"for (int64_t _i = 0; _i < {M}; _i++) {{")
+            self._emit(f"    {ctype} _m = {tile_name}.data[_i][0];")
+            self._emit(f"    for (int64_t _j = 1; _j < {N}; _j++)")
+            self._emit(f"        _m = fmaxf(_m, {tile_name}.data[_i][_j]);")
+            self._emit(f"    {result_name}.data[_i][0] = _m;")
+            self._emit(f"}}")
+        return result_name, result_shape
+
+    def _cg_tile_reduce(self, call: Call, reduce_op: str, init_val: str) -> tuple[str, list]:
+        args = call.args
+        tile_name = self._var_name(args[0])
+        axis = _extract_axis(call)
+        shape = _get_shape(args[0])
+        result_name = self._tmp("tile")
+        ctype = self._tile_element_type(call)
+        result_shape: list = shape
+
+        if axis == 1 and len(shape) == 2:
+            M, N = shape[0], shape[1]
+            result_shape = [M, 1]
+            self._emit(f"{self._tile}<{M}, 1> {result_name};")
+            self._emit(f"for (int64_t _i = 0; _i < {M}; _i++) {{")
+            self._emit(f"    {ctype} _acc = {init_val};")
+            self._emit(f"    for (int64_t _j = 0; _j < {N}; _j++)")
+            self._emit(f"        _acc {reduce_op} {tile_name}.data[_i][_j];")
+            self._emit(f"    {result_name}.data[_i][0] = _acc;")
+            self._emit(f"}}")
+        elif axis == 0 and len(shape) == 2:
+            M, N = shape[0], shape[1]
+            result_shape = [1, N]
+            self._emit(f"{self._tile}<1, {N}> {result_name};")
+            self._emit(f"for (int64_t _j = 0; _j < {N}; _j++) {{")
+            self._emit(f"    {ctype} _acc = {init_val};")
+            self._emit(f"    for (int64_t _i = 0; _i < {M}; _i++)")
+            self._emit(f"        _acc {reduce_op} {tile_name}.data[_i][_j];")
+            self._emit(f"    {result_name}.data[0][_j] = _acc;")
+            self._emit(f"}}")
+        return result_name, result_shape
+
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -812,6 +940,40 @@ def _eltwise_member_name(op_name: str, unary: bool) -> str:
     if unary:
         return unary_map.get(base, base)
     return binary_map.get(base, "operator+")
+
+
+def _extract_axis(call: Call) -> int:
+    """Extract the axis argument from a Call, checking kwargs first then args."""
+    if call.kwargs and "axis" in call.kwargs:
+        ax = call.kwargs["axis"]
+        if isinstance(ax, int):
+            return ax
+        try:
+            return int(_eval_const(ax))
+        except (TypeError, ValueError):
+            pass
+    if len(call.args) >= 2:
+        try:
+            return int(_eval_const(call.args[1]))
+        except (TypeError, ValueError):
+            pass
+    return -1
+
+
+def _resolve_shape_from_args(call: Call, idx: int = 1) -> list[int] | None:
+    """Extract a shape from call args[idx] or kwargs['shape']."""
+    if call.kwargs and "shape" in call.kwargs:
+        shape_expr = call.kwargs["shape"]
+        try:
+            return [_eval_const(e) for e in _extract_tuple_elements(shape_expr)]
+        except TypeError:
+            pass
+    if len(call.args) > idx:
+        try:
+            return [_eval_const(e) for e in _extract_tuple_elements(call.args[idx])]
+        except TypeError:
+            pass
+    return None
 
 
 def _extract_tuple_elements(expr) -> list:
