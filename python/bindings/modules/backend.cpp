@@ -25,6 +25,7 @@
 #include "../module.h"
 #include "pypto/backend/910B/backend_910b.h"
 #include "pypto/backend/950/backend_950.h"
+#include "pypto/backend/cpu/backend_cpu.h"
 #include "pypto/backend/common/backend_config.h"
 #include "pypto/backend/common/backend_handler.h"
 #include "pypto/backend/common/soc.h"
@@ -39,6 +40,7 @@ namespace python {
 using pypto::backend::Backend;
 using pypto::backend::Backend910B;
 using pypto::backend::Backend950;
+using pypto::backend::BackendCPU;
 using pypto::backend::BackendHandler;
 using pypto::backend::BackendType;
 using pypto::backend::Cluster;
@@ -56,7 +58,8 @@ void BindBackend(nb::module_& m) {
   nb::enum_<BackendType>(backend_mod, "BackendType",
                          "Backend type for passes and codegen (use Instance internally)")
       .value("Ascend910B", BackendType::Ascend910B, "910B backend (PTO assembly codegen)")
-      .value("Ascend950", BackendType::Ascend950, "950 PTO backend");
+      .value("Ascend950", BackendType::Ascend950, "950 PTO backend")
+      .value("CPU", BackendType::CPU, "CPU backend (scalar C codegen with OpenMP)");
 
   // ========== Mem class ==========
   nb::class_<Mem>(backend_mod, "Mem", "Memory component")
@@ -189,6 +192,11 @@ void BindBackend(nb::module_& m) {
   nb::class_<Backend950, Backend>(backend_mod, "Backend950", "950 PTO backend implementation")
       .def_static("instance", &Backend950::Instance, nb::rv_policy::reference,
                   "Get singleton instance of 950 backend");
+
+  // ========== BackendCPU concrete implementation ==========
+  nb::class_<BackendCPU, Backend>(backend_mod, "BackendCPU", "CPU backend (scalar C codegen)")
+      .def_static("instance", &BackendCPU::Instance, nb::rv_policy::reference,
+                  "Get singleton instance of CPU backend");
 
   // ========== Backend configuration functions ==========
   backend_mod.def("set_backend_type", &backend::BackendConfig::SetBackendType, nb::arg("backend_type"),

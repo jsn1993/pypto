@@ -52,7 +52,8 @@ class BackendHandler;
  */
 enum class BackendType {
   Ascend910B,  ///< 910B backend (PTO assembly codegen)
-  Ascend950    ///< 950 PTO backend
+  Ascend950,   ///< 950 PTO backend
+  CPU          ///< CPU backend (scalar C codegen with OpenMP)
 };
 
 /**

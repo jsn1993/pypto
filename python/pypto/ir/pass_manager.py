@@ -90,6 +90,7 @@ class OptimizationStrategy(Enum):
 
     Default = "Default"  # Full tensor-oriented PTO pipeline
     DebugTileOptimization = "DebugTileOptimization"  # Debug-only PTO tile pipeline
+    CPUDefault = "CPUDefault"  # CPU scalar backend pipeline
 
 
 class PassManager:
@@ -169,9 +170,19 @@ class PassManager:
             ("DeriveCallDirections", lambda: passes.derive_call_directions()),
             ("Simplify", lambda: passes.simplify()),
         ]
+        cpu_passes: list[PassSpec] = tensor_prefix_passes + [
+            ("LowerCompositeOps", lambda: passes.lower_composite_ops()),
+            ("SplitChunkedLoops", lambda: passes.split_chunked_loops()),
+            ("ConvertTensorToTileOps", lambda: passes.convert_tensor_to_tile_ops()),
+            ("FlattenTileNdTo2D", lambda: passes.flatten_tile_nd_to_2d()),
+            ("NormalizeReturnOrder", lambda: passes.normalize_return_order()),
+            ("DeriveCallDirections", lambda: passes.derive_call_directions()),
+            ("Simplify", lambda: passes.simplify()),
+        ]
         cls._strategy_passes = {
             OptimizationStrategy.Default: tensor_prefix_passes + tensor_only_passes + tile_pto_passes,
             OptimizationStrategy.DebugTileOptimization: tensor_prefix_passes + tile_pto_passes,
+            OptimizationStrategy.CPUDefault: cpu_passes,
         }
 
     @classmethod

@@ -59,10 +59,11 @@ All repositories live under [github.com/hw-native-sys](https://github.com/hw-nat
                     └─────────────────────────────────────────────┘
 ```
 
-**Two codegen paths from pypto:**
+**Three codegen paths from pypto:**
 
 - **InCore functions** (tile-level compute) → `.pto` → PTOAS → pto-isa → AICore binaries
 - **Orchestration functions** (task scheduling) → C++ using PTO2 runtime API → compiled for AICPU
+- **CPU functions** (scalar + OpenMP) → C code with polymorphic vector types → gcc → `.so` → ctypes FFI
 
 ## Component Details
 
@@ -85,7 +86,7 @@ Python DSL → IR (immutable tree) → Pass Pipeline (20+ passes) → CodeGen
 
 - **IR layer**: Multi-level representation — Tensor ops, Tile ops, and system ops coexist in the same IR
 - **Pass pipeline**: Progressively lowers tensor-level IR to tile-level IR (unrolling, SSA conversion, tiling, memory allocation, etc.)
-- **CodeGen**: Two backends — PTO codegen (InCore → `.pto` MLIR for AICore) and Orchestration codegen (→ C++ for AICPU)
+- **CodeGen**: Three backends — PTO codegen (InCore → `.pto` MLIR for AICore), Orchestration codegen (→ C++ for AICPU), and CPU codegen (→ C with OpenMP)
 
 **Key directories:**
 

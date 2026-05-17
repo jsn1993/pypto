@@ -35,9 +35,10 @@ if (backend::GetBackendType() != backend::BackendType::Ascend910B) { ... }
                                      │
                                      ▼
                 ┌──────────────────────────────────────┐
-                │  Backend910B / Backend950 / ...      │
+                │  Backend910B / Backend950 / BackendCPU│
                 │     -> Ascend910BHandler::Instance() │
                 │     -> Ascend950Handler::Instance()  │
+                │     -> CPUBackendHandler::Instance()  │
                 └──────────────────────────────────────┘
 ```
 
@@ -46,18 +47,18 @@ if (backend::GetBackendType() != backend::BackendType::Ascend910B) { ... }
 
 ## 接口
 
-| 方法 | 用途 | Ascend910B | Ascend950 |
-| ---- | ---- | ---------- | --------- |
-| `GetPtoTargetArch()` | `module attributes {pto.target_arch = "..."}` | `"a2a3"` | `"a5"` |
-| `GetLaunchSpecCoreCountMethod()` | `launch_spec` 上设置核数的运行时 API 名 | `"set_block_num"` | `"set_core_num"` |
-| `GetDefaultSimPlatform()` | 默认仿真平台名 | `"a2a3sim"` | `"a5sim"` |
-| `GetExtraPtoasFlags()` | ptoas 额外参数 | `[]` | `["--pto-arch", "a5"]` |
-| `RequiresGMPipeBuffer()` | `ExpandMixedKernel` 是否注入 GM 槽位缓冲 | `true` | `false` |
-| `RequiresSplitLoadTpopWorkaround()` | `LegalizePtoBufferReuse` 是否做 split-load tpop 危害规避 | `true` | `false` |
-| `RequiresVtoCFractalAdapt()` | AIV 端 V→C tpush 是否需要 fractal 适配 `tile.move` | `false` | `true` |
-| `RequiresRuntimeSubblockBridge()` | 拆分 AIV 包装器是否从 runtime 上下文取 subblock id | `true` | `false` |
-| `RequiresNoSplitDualAivDispatch()` | `no_split` 混合 kernel 是否仍需在两个 AIV lane 上同时下发 | `true` | `false` |
-| `BuildCrossCoreTransferView(dest, view)` | 跨核传输边界处的 tile 视图 | Mat/Left/Right 转 NZ；Vec 保持原样 | Mat/Left/Right 转 NZ（a5 硬件要求边界为 fractal）；Vec 保持原样 |
+| 方法 | 用途 | Ascend910B | Ascend950 | CPU |
+| ---- | ---- | ---------- | --------- | --- |
+| `GetPtoTargetArch()` | `module attributes {pto.target_arch = "..."}` | `"a2a3"` | `"a5"` | `"cpu"` |
+| `GetLaunchSpecCoreCountMethod()` | `launch_spec` 上设置核数的运行时 API 名 | `"set_block_num"` | `"set_core_num"` | `""` |
+| `GetDefaultSimPlatform()` | 默认仿真平台名 | `"a2a3sim"` | `"a5sim"` | `"cpu"` |
+| `GetExtraPtoasFlags()` | ptoas 额外参数 | `["--pto-arch", "a3"]` | `["--pto-arch", "a5"]` | `[]` |
+| `RequiresGMPipeBuffer()` | `ExpandMixedKernel` 是否注入 GM 槽位缓冲 | `true` | `false` | `false` |
+| `RequiresSplitLoadTpopWorkaround()` | `LegalizePtoBufferReuse` 是否做 split-load tpop 危害规避 | `true` | `false` | `false` |
+| `RequiresVtoCFractalAdapt()` | AIV 端 V→C tpush 是否需要 fractal 适配 `tile.move` | `false` | `true` | `false` |
+| `RequiresRuntimeSubblockBridge()` | 拆分 AIV 包装器是否从 runtime 上下文取 subblock id | `true` | `false` | `false` |
+| `RequiresNoSplitDualAivDispatch()` | `no_split` 混合 kernel 是否仍需在两个 AIV lane 上同时下发 | `true` | `false` | `false` |
+| `BuildCrossCoreTransferView(dest, view)` | 跨核传输边界处的 tile 视图 | Mat/Left/Right 转 NZ；Vec 保持原样 | Mat/Left/Right 转 NZ（a5 硬件要求边界为 fractal）；Vec 保持原样 | 直通（保持原始视图） |
 
 ## 新增后端流程
 

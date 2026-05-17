@@ -70,11 +70,11 @@ Register(DiagnosticCheck::MyCheck,
 
 `BackendHandler` 暴露：
 
-| 方法 | Ascend910B | Ascend950 |
-| ---- | ---------- | --------- |
-| `GetGmAccessGranularityBytes()` | 512 | 128 |
-| `GetL2CacheLineBytes()` | 512 | 512 |
-| `GetRecommendedInnermostDimBytes()` | 512 | 128 |
+| 方法 | Ascend910B | Ascend950 | CPU |
+| ---- | ---------- | --------- | --- |
+| `GetGmAccessGranularityBytes()` | 512 | 128 | 64 |
+| `GetL2CacheLineBytes()` | 512 | 512 | 64 |
+| `GetRecommendedInnermostDimBytes()` | 512 | 128 | 64 |
 
 新增 backend 时实现这些虚函数；perf-hint 检查通过 `PassContext::Current()->GetBackendHandler()` 读取。
 

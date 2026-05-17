@@ -16,6 +16,7 @@ class BackendType:
 
     Ascend910B: BackendType
     Ascend950: BackendType
+    CPU: BackendType
 
 class Mem:
     """Memory component."""
@@ -114,6 +115,14 @@ class Backend950(Backend):
     @staticmethod
     def instance() -> Backend950:
         """Get singleton instance of 950 backend."""
+        ...
+
+class BackendCPU(Backend):
+    """CPU backend implementation (singleton)."""
+
+    @staticmethod
+    def instance() -> BackendCPU:
+        """Get singleton instance of CPU backend."""
         ...
 
 def set_backend_type(backend_type: BackendType) -> None:

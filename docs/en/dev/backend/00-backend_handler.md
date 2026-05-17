@@ -37,9 +37,10 @@ it through the new pure-virtual `Backend::GetHandler()`.
                                      │
                                      ▼
                 ┌──────────────────────────────────────┐
-                │  Backend910B / Backend950 / ...      │
+                │  Backend910B / Backend950 / BackendCPU│
                 │     -> Ascend910BHandler::Instance() │
                 │     -> Ascend950Handler::Instance()  │
+                │     -> CPUBackendHandler::Instance()  │
                 └──────────────────────────────────────┘
 ```
 
@@ -49,18 +50,18 @@ to global state.
 
 ## Interface
 
-| Method | Purpose | Ascend910B | Ascend950 |
+| Method | Purpose | Ascend910B | Ascend950 | CPU |
 | ------ | ------- | ---------- | --------- |
-| `GetPtoTargetArch()` | `module attributes {pto.target_arch = "..."}` | `"a2a3"` | `"a5"` |
-| `GetLaunchSpecCoreCountMethod()` | runtime API name on `launch_spec` | `"set_block_num"` | `"set_core_num"` |
-| `GetDefaultSimPlatform()` | default simulator platform | `"a2a3sim"` | `"a5sim"` |
-| `GetExtraPtoasFlags()` | extra ptoas flags | `[]` | `["--pto-arch", "a5"]` |
-| `RequiresGMPipeBuffer()` | inject GM-backed pipe slot in `ExpandMixedKernel` | `true` | `false` |
-| `RequiresSplitLoadTpopWorkaround()` | split-load tpop hazard fix in `LegalizePtoBufferReuse` | `true` | `false` |
-| `RequiresVtoCFractalAdapt()` | AIV-side V-to-C fractal adapter `tile.move` | `false` | `true` |
-| `RequiresRuntimeSubblockBridge()` | split AIV wrappers source subblock id from runtime | `true` | `false` |
-| `RequiresNoSplitDualAivDispatch()` | `no_split` mixed kernels still dispatch on both AIV lanes | `true` | `false` |
-| `BuildCrossCoreTransferView(dest, view)` | layout at cross-core transfer boundary | NZ for Mat/Left/Right; preserve for Vec | NZ for Mat/Left/Right; preserve for Vec (a5 hardware also requires fractal at the boundary) |
+| `GetPtoTargetArch()` | `module attributes {pto.target_arch = "..."}` | `"a2a3"` | `"a5"` | `"cpu"` |
+| `GetLaunchSpecCoreCountMethod()` | runtime API name on `launch_spec` | `"set_block_num"` | `"set_core_num"` | `""` |
+| `GetDefaultSimPlatform()` | default simulator platform | `"a2a3sim"` | `"a5sim"` | `"cpu"` |
+| `GetExtraPtoasFlags()` | extra ptoas flags | `["--pto-arch", "a3"]` | `["--pto-arch", "a5"]` | `[]` |
+| `RequiresGMPipeBuffer()` | inject GM-backed pipe slot in `ExpandMixedKernel` | `true` | `false` | `false` |
+| `RequiresSplitLoadTpopWorkaround()` | split-load tpop hazard fix in `LegalizePtoBufferReuse` | `true` | `false` | `false` |
+| `RequiresVtoCFractalAdapt()` | AIV-side V-to-C fractal adapter `tile.move` | `false` | `true` | `false` |
+| `RequiresRuntimeSubblockBridge()` | split AIV wrappers source subblock id from runtime | `true` | `false` | `false` |
+| `RequiresNoSplitDualAivDispatch()` | `no_split` mixed kernels still dispatch on both AIV lanes | `true` | `false` | `false` |
+| `BuildCrossCoreTransferView(dest, view)` | layout at cross-core transfer boundary | NZ for Mat/Left/Right; preserve for Vec | NZ for Mat/Left/Right; preserve for Vec | pass-through (original view) |
 
 ## Adding a new backend
 

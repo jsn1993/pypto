@@ -69,8 +69,17 @@ bool RegisterBackend950() {
   return true;
 }
 
+bool RegisterBackendCPU() {
+  BackendRegistry::Instance().Register("CPU", [](const std::shared_ptr<const SoC>& /*unused*/) {
+    throw ValueError("Cannot create BackendCPU via registry - use BackendCPU::Instance()");
+    return std::unique_ptr<Backend>(nullptr);  // Never reached
+  });
+  return true;
+}
+
 static bool backend_910b_registered = RegisterBackend910B();
 static bool backend_950_registered = RegisterBackend950();
+static bool backend_cpu_registered = RegisterBackendCPU();
 }  // namespace
 
 }  // namespace backend

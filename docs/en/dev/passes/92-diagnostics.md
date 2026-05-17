@@ -70,11 +70,11 @@ Performance hints are best-effort advisory diagnostics that flag patterns likely
 
 `BackendHandler` exposes:
 
-| Method | Ascend910B | Ascend950 |
-| ------ | ---------- | --------- |
-| `GetGmAccessGranularityBytes()` | 512 | 128 |
-| `GetL2CacheLineBytes()` | 512 | 512 |
-| `GetRecommendedInnermostDimBytes()` | 512 | 128 |
+| Method | Ascend910B | Ascend950 | CPU |
+| ------ | ---------- | --------- | --- |
+| `GetGmAccessGranularityBytes()` | 512 | 128 | 64 |
+| `GetL2CacheLineBytes()` | 512 | 512 | 64 |
+| `GetRecommendedInnermostDimBytes()` | 512 | 128 | 64 |
 
 Adding a new backend implements these alongside the existing virtuals; perf-hint checks consult them via `PassContext::Current()->GetBackendHandler()`.
 

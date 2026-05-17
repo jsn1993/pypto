@@ -29,6 +29,7 @@
 
 #include "pypto/backend/910B/backend_910b.h"
 #include "pypto/backend/950/backend_950.h"
+#include "pypto/backend/cpu/backend_cpu.h"
 #include "pypto/backend/common/backend_registry.h"
 #include "pypto/ir/memory_allocator_policy.h"
 
@@ -52,8 +53,10 @@ const Backend* GetBackendInstance(BackendType type) {
       return &Backend910B::Instance();
     case BackendType::Ascend950:
       return &Backend950::Instance();
+    case BackendType::CPU:
+      return &BackendCPU::Instance();
     default:
-      CHECK(false) << "GetBackendInstance: unexpected BackendType (must be Ascend910B or Ascend950)";
+      INTERNAL_CHECK(false) << "GetBackendInstance: unexpected BackendType";
       return nullptr;  // unreachable
   }
 }
@@ -64,6 +67,8 @@ std::string BackendTypeToString(BackendType type) {
       return "Ascend910B";
     case BackendType::Ascend950:
       return "Ascend950";
+    case BackendType::CPU:
+      return "CPU";
   }
   return "Unknown";
 }

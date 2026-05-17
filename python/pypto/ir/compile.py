@@ -47,7 +47,9 @@ def _backend_type_for_platform(platform: str | None, fallback: BackendType) -> B
         return BackendType.Ascend910B
     if platform in ("a5", "a5sim"):
         return BackendType.Ascend950
-    raise ValueError(f"Invalid platform {platform!r}. Expected 'a2a3sim', 'a2a3', 'a5sim', or 'a5'.")
+    if platform == "cpu":
+        return BackendType.CPU
+    raise ValueError(f"Invalid platform {platform!r}. Expected 'a2a3sim', 'a2a3', 'a5sim', 'a5', or 'cpu'.")
 
 
 def compile(  # noqa: PLR0913
@@ -64,6 +66,7 @@ def compile(  # noqa: PLR0913
     platform: str | None = None,
     distributed_config: Any = None,
     block_dim: int | None = None,
+    vec_width: int = 1,
 ) -> "CompiledProgram | DistributedCompiledProgram":
     """Compile a Program through passes and codegen.
 
@@ -108,6 +111,9 @@ def compile(  # noqa: PLR0913
             count is below simpler's default of 24, or when the kernel
             needs a specific block count. Ignored for L3+ distributed
             programs — set ``DistributedConfig.block_dim`` instead.
+        vec_width: Vector width for CPU backend elementwise ops.
+            1=scalar (default), 4=SSE, 8=AVX, 16=AVX-512.
+            Ignored for non-CPU backends.
 
     Returns:
         A :class:`CompiledProgram` that wraps the output directory and can
@@ -123,6 +129,29 @@ def compile(  # noqa: PLR0913
         >>> compiled(a, b, c, config=RunConfig(device_id=1))  # specify device
     """
     effective_backend_type = _backend_type_for_platform(platform, backend_type)
+
+    # CPU backend: override strategy and use C codegen instead of PTO
+    if effective_backend_type == BackendType.CPU:
+        strategy = OptimizationStrategy.CPUDefault
+        _backend_core.set_backend_type(effective_backend_type)
+
+        if output_dir is None:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_dir = os.path.join("build_output", f"{program.name}_{timestamp}")
+        os.makedirs(output_dir, exist_ok=True)
+
+        with _passes.PassContext([]):
+            pm = PassManager.get_strategy(strategy)
+            transformed_program = pm.run_passes(program)
+
+        from pypto.backend.cpu_compiler import cpu_compile as _cpu_compile  # noqa: PLC0415
+
+        if vec_width not in (1, 4, 8, 16):
+            raise ValueError(f"vec_width must be 1, 4, 8, or 16, got {vec_width}")
+        return _cpu_compile(
+            transformed_program, work_dir=output_dir, vec_width=vec_width
+        )
+
     _backend_core.set_backend_type(effective_backend_type)
 
     if output_dir is None:
