@@ -192,7 +192,7 @@ print(f"Generated code in: {output_dir}")
 | `output_dir` | `None` → `build_output/<name>_<timestamp>` | Directory for codegen, reports, and (when dumping) pass IR |
 | `strategy` | `OptimizationStrategy.Default` | Pass pipeline preset (`Default` or `DebugTileOptimization`) |
 | `dump_passes` | `True` | When `True`, write IR snapshots under `output_dir/passes_dump/` after each pass |
-| `backend_type` | `BackendType.Ascend910B` | Target hardware for passes and codegen (`Ascend910B` or `Ascend950`) |
+| `backend_type` | `BackendType.Ascend910B` | Target hardware for passes and codegen (`Ascend910B`, `Ascend950`, or `CPU`) |
 | `skip_ptoas` | `False` | If `True`, skip the ptoas step and emit raw `.pto` (MLIR) instead of compiled C++ wrappers |
 | `verification_level` | `None` | Optional `ir.VerificationLevel` override; `None` uses defaults (or `PYPTO_VERIFY_LEVEL`) |
 

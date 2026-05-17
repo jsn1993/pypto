@@ -540,8 +540,9 @@ output_dir = ir.compile(
 | 参数 | 选项 | 说明 |
 | ---- | ---- | ---- |
 | `program` | `ir.Program` | 必填，待编译的程序对象（来自 `@pl.program` 等） |
-| `strategy` | `OptimizationStrategy.Default`、`DebugTileOptimization` | `Default` = 完整 tensor 导向流水线。`DebugTileOptimization` = 仅用于调试的 PTO tile 流水线，不包含 tensor-only pass |
-| `backend_type` | `BackendType.Ascend910B`、`BackendType.Ascend950` | Pass 与代码生成的目标硬件（从 `pypto.backend` 导入 `BackendType`） |
+| `strategy` | `Default`、`DebugTileOptimization`、`CPUDefault` | `Default` = 完整 tensor 导向流水线。`DebugTileOptimization` = 仅用于调试的 PTO tile 流水线。`CPUDefault` = CPU 优化流水线（跳过 Ascend 专用 pass） |
+| `backend_type` | `BackendType.Ascend910B`、`BackendType.Ascend950`、`BackendType.CPU` | Pass 与代码生成的目标硬件（从 `pypto.backend` 导入 `BackendType`）。CPU 后端编译为 C with OpenMP 通过 gcc |
+| `vec_width` | `1`、`4`、`8`、`16` | 仅 CPU：元素级 tile 操作的 SIMD 向量宽度。`1` = 标量（默认），`4` = SSE，`8` = AVX，`16` = AVX-512。Ascend 后端忽略 |
 | `dump_passes` | `True`/`False` | 为 `True` 时在每个 pass 后将 IR 快照写入 `<output_dir>/passes_dump/`（默认 `True`） |
 | `skip_ptoas` | `True`/`False` | 跳过 ptoas；只生成原始 `.pto`（MLIR），不生成已编译的 C++ 包装代码（默认 `False`） |
 | `output_dir` | 路径或 `None` | `None` 时使用 `build_output/<program_name>_<timestamp>`；目录按需创建 |

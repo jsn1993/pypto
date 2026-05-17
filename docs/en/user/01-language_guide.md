@@ -554,8 +554,9 @@ output_dir = ir.compile(
 | Parameter | Options | Description |
 | --------- | ------- | ----------- |
 | `program` | `ir.Program` | Required program object (from `@pl.program` or equivalent) |
-| `strategy` | `OptimizationStrategy.Default`, `DebugTileOptimization` | `Default` = full tensor-oriented pipeline. `DebugTileOptimization` = debug-only PTO tile pipeline without tensor-only passes |
-| `backend_type` | `BackendType.Ascend910B`, `BackendType.Ascend950` | Target hardware for passes and codegen (`import BackendType` from `pypto.backend`) |
+| `strategy` | `Default`, `DebugTileOptimization`, `CPUDefault` | `Default` = full tensor-oriented pipeline. `DebugTileOptimization` = debug-only PTO tile pipeline. `CPUDefault` = CPU-optimized pipeline (skips Ascend-specific passes). |
+| `backend_type` | `BackendType.Ascend910B`, `BackendType.Ascend950`, `BackendType.CPU` | Target hardware for passes and codegen (`import BackendType` from `pypto.backend`). CPU backend compiles to C with OpenMP via gcc. |
+| `vec_width` | `1`, `4`, `8`, `16` | CPU only: SIMD vector width for elementwise tile ops. `1` = scalar (default), `4` = SSE, `8` = AVX, `16` = AVX-512. Ignored for Ascend backends. |
 | `dump_passes` | `True`/`False` | If `True`, write IR snapshots under `<output_dir>/passes_dump/` after each pass (default `True`) |
 | `skip_ptoas` | `True`/`False` | Skip the ptoas step; emit raw `.pto` (MLIR) instead of compiled C++ wrappers (default `False`) |
 | `output_dir` | path or `None` | If `None`, uses `build_output/<program_name>_<timestamp>`; directory is created as needed |
