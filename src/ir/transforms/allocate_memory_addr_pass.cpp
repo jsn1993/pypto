@@ -324,21 +324,43 @@ std::vector<std::pair<const MemRef*, MemRefPtr>> AllocateMemoryAddresses(
         slot_size = std::max(slot_size, static_cast<uint64_t>(ref->size_));
       }
 
-      // Every member of the group (root + views) gets the same bumped base
-      // address as its byte_offset.  The codegen recovers each view's actual
-      // location from the corresponding ``tile.slice`` op args, not from the
-      // result MemRef offset, so collapsing all members onto base_addr is safe
-      // (and matches the existing post-pass invariant that byte_offset_ is a
-      // ConstInt the verifier can read).
+      // Bump the whole group to `current_addr`, then preserve each member's
+      // own offset within the slot: new byte_offset = base_addr + old offset.
       //
-      // INT64 dtype is required by the PTOAS dialect's `pto.alloc_tile` addr
-      // operand. PTO codegen reads this dtype from the ConstInt 1:1 — no
-      // codegen-side override.
-      auto base_addr_expr =
-          std::make_shared<ConstInt>(static_cast<int64_t>(current_addr), DataType::INT64, Span::unknown());
+      // InitMemRef already records each view's relative offset (parent offset +
+      // the view op's byte offset, see ShareMemRefFrom).  The root MemRef has
+      // offset 0, so it lands on base_addr; a ``tile.slice`` view at row k lands
+      // on base_addr + k*row_stride.  Codegen reads ``pto.alloc_tile`` addr 1:1
+      // from this ConstInt, so a reshape-of-slice chain — whose result inherits
+      // the slice's offset but does NOT go through ``pto.subview`` — gets the
+      // correct per-view address instead of collapsing onto the parent base
+      // (issue #1510).  Pure ``tile.slice`` codegen is unaffected: it still
+      // derives the offset from the slice op's own operands off the root base.
       for (const auto& old_memref : group) {
-        auto new_memref = std::make_shared<MemRef>(old_memref->name_hint_, old_memref->base_, base_addr_expr,
-                                                   old_memref->size_, old_memref->span_);
+        // Fold a const relative offset into a single ConstInt: base + offset.
+        // The AllocatedMemoryAddr property requires byte_offset_ to be a
+        // ConstInt >= 0, and PTO codegen reads `pto.alloc_tile` addr 1:1 from it.
+        //
+        // A non-const (dynamic) offset cannot be encoded as a ConstInt address,
+        // so it falls back to the bare base. This is safe: a dynamic-offset view
+        // only ever reaches codegen through `tile.slice`, which re-derives the
+        // offset from the slice op's own operands (`pto.subview`) rather than the
+        // result MemRef addr. The fix only matters for const offsets, where a
+        // reshape-of-slice chain inherits the offset but does NOT go through
+        // `pto.subview`, so its address must come from this MemRef (issue #1510).
+        int64_t relative_offset = 0;
+        if (auto old_offset = std::dynamic_pointer_cast<const ConstInt>(old_memref->byte_offset_)) {
+          relative_offset = old_offset->value_;
+        }
+        // INT64 dtype is required by the PTOAS dialect's `pto.alloc_tile` addr
+        // operand; PTO codegen reads this dtype from the ConstInt 1:1.
+        auto member_addr_expr = std::make_shared<ConstInt>(
+            static_cast<int64_t>(current_addr) + relative_offset, DataType::INT64, Span::unknown());
+        // NOTE: MemRef is identity-bearing — each result must get a fresh
+        // unique_id_, so build it via the explicit constructor (MutableCopy is
+        // static_assert-forbidden for Var/MemRef).
+        auto new_memref = std::make_shared<MemRef>(old_memref->name_hint_, old_memref->base_,
+                                                   member_addr_expr, old_memref->size_, old_memref->span_);
         memref_pairs.emplace_back(old_memref.get(), new_memref);
       }
 
