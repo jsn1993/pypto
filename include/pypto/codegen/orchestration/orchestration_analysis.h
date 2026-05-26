@@ -77,7 +77,6 @@ class OrchestrationInfoCollector : public ir::IRVisitor {
 
  private:
   int tuple_call_counter_ = 0;
-  std::map<const ir::Var*, std::string> current_tuple_key_;
 };
 
 /**

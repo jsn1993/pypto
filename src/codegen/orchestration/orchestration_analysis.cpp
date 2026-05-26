@@ -86,26 +86,19 @@ void OrchestrationInfoCollector::VisitStmt_(const AssignStmtPtr& assign) {
     if (!IsBuiltinOp(call->op_->name_) && call->op_->name_ != "tensor.create") {
       if (As<TupleType>(call->GetType())) {
         std::string unique_key = "_tc_" + std::to_string(tuple_call_counter_++);
-        current_tuple_key_[assign->var_.get()] = unique_key;
         tuple_var_to_key[assign->var_.get()] = unique_key;
         call_to_tuple_key[call.get()] = unique_key;
       }
     }
   } else if (As<MakeTuple>(assign->value_)) {
     std::string unique_key = "_tc_" + std::to_string(tuple_call_counter_++);
-    current_tuple_key_[assign->var_.get()] = unique_key;
     tuple_var_to_key[assign->var_.get()] = unique_key;
   } else if (auto tuple_get = As<TupleGetItemExpr>(assign->value_)) {
-    const Var* tuple_ref_var = nullptr;
-    if (auto var = As<Var>(tuple_get->tuple_)) {
-      tuple_ref_var = var.get();
-    } else if (auto iter_arg = As<IterArg>(tuple_get->tuple_)) {
-      tuple_ref_var = iter_arg.get();
-    }
-
-    auto it = current_tuple_key_.find(tuple_ref_var);
-    if (it != current_tuple_key_.end()) {
-      call_tuple_elements[it->second].push_back({tuple_get->index_, assign->var_.get()});
+    if (auto tuple_ref = AsVarLike(tuple_get->tuple_)) {
+      auto it = tuple_var_to_key.find(tuple_ref.get());
+      if (it != tuple_var_to_key.end()) {
+        call_tuple_elements[it->second].push_back({tuple_get->index_, assign->var_.get()});
+      }
     }
   }
   IRVisitor::VisitStmt_(assign);
